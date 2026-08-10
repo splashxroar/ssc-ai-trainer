@@ -17,86 +17,100 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 # --- PAGE CONFIG MUST BE FIRST ---
 st.set_page_config(page_title="RADIANT: SSC Arena", layout="wide", initial_sidebar_state="expanded")
 
-# --- 🎨 PRO ESPORTS DARK UI INJECTION ---
+# --- 🎨 GEMINI UI INJECTION ---
 st.markdown("""
 <style>
-    /* Premium Dark Mode Background */
+    /* Gemini-style Dark Theme Background */
     .stApp {
-        background-color: #0d1117;
-        color: #e6edf3;
+        background-color: #131314;
+        color: #e3e3e3;
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
     
-    /* Hide Streamlit Watermarks & Menus */
+    /* Clean Headers */
+    h1, h2, h3 {
+        color: #ffffff !important;
+    }
+
+    /* Hide Streamlit Clutter */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* Sleek Sidebar */
+    /* Sleek Sidebar (Gemini deep grey) */
     [data-testid="stSidebar"] {
-        background-color: #010409;
-        border-right: 1px solid #30363d;
-    }
-    [data-testid="stSidebar"] * {
-        color: #e6edf3 !important;
+        background-color: #1e1f22;
+        border-right: 1px solid #444746;
     }
     
-    /* Pro Button Styling (Crisp borders, uppercase, hover glow) */
+    /* Safely target Sidebar Text without breaking dropdowns */
+    [data-testid="stSidebar"] h1, 
+    [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] h3, 
+    [data-testid="stSidebar"] label, 
+    [data-testid="stSidebar"] p {
+        color: #e3e3e3 !important;
+    }
+    
+    /* Smooth Gemini-style Buttons */
     .stButton>button {
-        border-radius: 4px;
-        border: 1px solid #f85149;
+        border-radius: 24px;
+        border: 1px solid #8ab4f8;
         background-color: transparent;
-        color: #f85149 !important;
-        font-weight: 600;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-        transition: 0.3s all ease-in-out;
+        color: #8ab4f8 !important;
+        font-weight: 500;
+        padding: 4px 20px;
+        transition: all 0.2s ease;
     }
     .stButton>button:hover {
-        background-color: #f85149;
-        color: #ffffff !important;
-        box-shadow: 0 0 15px rgba(248, 81, 73, 0.4);
-        transform: translateY(-2px);
+        background-color: rgba(138, 180, 248, 0.08);
+        border-color: #aecbfa;
+        color: #aecbfa !important;
+        box-shadow: none;
+        transform: translateY(-1px);
     }
     
-    /* Disabled Buttons (Greyed out nicely) */
+    /* Disabled Buttons */
     .stButton>button:disabled {
-        border: 1px solid #30363d;
-        background-color: #21262d;
-        color: #8b949e !important;
-        box-shadow: none;
+        border: 1px solid #444746;
+        color: #80868b !important;
+        background-color: transparent;
         transform: none;
     }
     
-    /* ---- THE TAB VISIBILITY FIX ---- */
+    /* Fix Input Boxes (Dropdowns and Text Inputs) */
+    div[data-baseweb="select"] > div, 
+    div[data-baseweb="input"] > div {
+        background-color: #282a2d !important;
+        border: 1px solid #444746 !important;
+        border-radius: 8px !important;
+    }
+    
+    /* Tabs Styling */
     .stTabs [data-baseweb="tab-list"] {
         gap: 24px;
         background-color: transparent;
     }
-    
-    /* Inactive Tabs - Bright Silver Text */
     .stTabs [data-baseweb="tab"] {
         background-color: transparent;
-        color: #8b949e !important; 
+        color: #9aa0a6 !important; 
         font-size: 16px;
         font-weight: 500;
-        padding-bottom: 10px;
+        padding-bottom: 12px;
     }
     .stTabs [data-baseweb="tab"]:hover {
-        color: #c9d1d9 !important;
+        color: #e3e3e3 !important;
     }
-    
-    /* Active Tab - Glowing Crimson */
     .stTabs [aria-selected="true"] {
-        border-bottom: 3px solid #f85149;
-        color: #f85149 !important; 
-        font-weight: 700;
+        border-bottom: 3px solid #8ab4f8;
+        color: #8ab4f8 !important; 
     }
 </style>
 """, unsafe_allow_html=True)
 
 # --- SECURE LOGIN SCREEN ---
 if 'username' not in st.session_state:
-    st.markdown("<h1 style='text-align: center; color: #f85149;'>🔐 SECURE MAINFRAME</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #8ab4f8;'>🔐 SECURE MAINFRAME</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center;'>Enter your Player Tag and 4-Digit PIN to connect to the server.</p>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -124,7 +138,7 @@ if 'username' not in st.session_state:
 
 # --- MAIN APP ---
 current_user = st.session_state['username']
-st.sidebar.markdown(f"### 🕹️ Agent: <span style='color:#f85149;'>{current_user}</span>", unsafe_allow_html=True)
+st.sidebar.markdown(f"### 🕹️ Agent: <span style='color:#8ab4f8;'>{current_user}</span>", unsafe_allow_html=True)
 if st.sidebar.button("Disconnect"):
     del st.session_state['username']
     st.rerun()
@@ -208,7 +222,7 @@ with tab1:
         diff_label = st.session_state.get('current_difficulty', 'Unknown')
         
         timer_html = f"""
-        <div style="background-color: #010409; color: #f85149; padding: 10px; border-radius: 4px; text-align: center; font-family: monospace; font-size: 24px; font-weight: bold; border: 1px solid #f85149; margin-bottom: 15px; box-shadow: 0 0 10px rgba(248, 81, 73, 0.2);">
+        <div style="background-color: #1e1f22; color: #8ab4f8; padding: 10px; border-radius: 8px; text-align: center; font-family: monospace; font-size: 24px; font-weight: bold; border: 1px solid #444746; margin-bottom: 15px; box-shadow: 0 0 10px rgba(138, 180, 248, 0.1);">
             <span id="clock">⏳ Syncing Timer...</span>
         </div>
         <script>
@@ -219,7 +233,6 @@ with tab1:
                 var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
                 var seconds = Math.floor((distance % (1000 * 60)) / 1000);
                 
-                // Add leading zero to seconds
                 if(seconds < 10) {{ seconds = "0" + seconds; }}
                 
                 document.getElementById("clock").innerHTML = "⏱️ Time Remaining: " + minutes + ":" + seconds;
@@ -239,7 +252,7 @@ with tab1:
         q_data = test_questions[current_idx]
         
         with col_main:
-            st.markdown(f"<h3 style='color: #f85149;'>Target {current_idx + 1} / {len(test_questions)}</h3>", unsafe_allow_html=True)
+            st.markdown(f"<h3 style='color: #8ab4f8;'>Target {current_idx + 1} / {len(test_questions)}</h3>", unsafe_allow_html=True)
             st.write(f"**{q_data['question']}**")
             
             options = q_data['options']
@@ -266,12 +279,12 @@ with tab1:
                     
         with col_palette:
             st.markdown("### 🗺️ HUD Grid")
-            st.write("🔴 Locked | ⚪ Blank")
+            st.write("🔵 Locked | ⚪ Blank")
             
             grid_cols = st.columns(5)
             for i in range(len(test_questions)):
                 col_i = i % 5
-                status_emoji = "🔴" if st.session_state['answers'][i] else "⚪"
+                status_emoji = "🔵" if st.session_state['answers'][i] else "⚪"
                 if grid_cols[col_i].button(f"{status_emoji} {i+1}", key=f"navbtn_{i}"):
                     st.session_state['q_index'] = i
                     st.rerun()
