@@ -32,10 +32,10 @@ st.markdown("""
         color: #ffffff !important;
     }
 
-    /* Hide Streamlit Clutter */
+    /* Hide Streamlit Clutter (FIXED: Kept header visible so sidebar arrow works!) */
     #MainMenu {visibility: hidden;}
-    header {visibility: hidden;}
     footer {visibility: hidden;}
+    header {background-color: transparent !important;} 
     
     /* Sleek Sidebar (Gemini deep grey) */
     [data-testid="stSidebar"] {
@@ -43,7 +43,7 @@ st.markdown("""
         border-right: 1px solid #444746;
     }
     
-    /* Safely target Sidebar Text without breaking dropdowns */
+    /* Safely target Sidebar Text */
     [data-testid="stSidebar"] h1, 
     [data-testid="stSidebar"] h2, 
     [data-testid="stSidebar"] h3, 
@@ -78,7 +78,7 @@ st.markdown("""
         transform: none;
     }
     
-    /* Fix Input Boxes (Dropdowns and Text Inputs) */
+    /* Fix Input Boxes */
     div[data-baseweb="select"] > div, 
     div[data-baseweb="input"] > div {
         background-color: #282a2d !important;
@@ -145,7 +145,26 @@ if st.sidebar.button("Disconnect"):
 
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Match Settings")
+
 selected_subject = st.sidebar.selectbox("Queue Select", ["GK (Polity, History, etc.)", "Math (Quant)", "English Comprehension", "General Intelligence (Reasoning)"])
+
+# --- NEW: MATH CHAPTER LOGIC ---
+specific_chapter = None
+if selected_subject == "Math (Quant)":
+    specific_chapter = st.sidebar.selectbox("Target Chapter (Math Only)", [
+        "Mixed (All Chapters)", 
+        "Number System",
+        "Percentage", 
+        "Ratio & Proportion",
+        "Time & Work",
+        "Time, Speed & Distance",
+        "Algebra",
+        "Geometry",
+        "Trigonometry",
+        "Mensuration",
+        "Data Interpretation"
+    ])
+
 difficulty = st.sidebar.selectbox("Difficulty Tier", ["Easy", "Moderate", "Hard"])
 test_time_limit = st.sidebar.slider("Match Timer (Minutes)", 10, 60, 30)
 
@@ -186,8 +205,13 @@ with tab1:
             start_weakest = st.button("🔥 Queue Weakness Drill", disabled=not weakest_topic, use_container_width=True)
 
         def generate_ai_test(focus_topic):
-            with st.spinner(f"Generating a {difficulty} match for {focus_topic}..."):
-                prompt = f"Generate a 25-question multiple-choice test for SSC CGL level. Subject: {focus_topic}. Difficulty Level: {difficulty}. Return ONLY valid JSON format as a list of dictionaries with exactly these keys: 'question', 'options' (list of 4 strings), 'answer' (the exact correct option string), and 'explanation' (a detailed 2-sentence explanation)."
+            # Check if Math chapter is selected
+            actual_topic = focus_topic
+            if focus_topic == "Math (Quant)" and specific_chapter and specific_chapter != "Mixed (All Chapters)":
+                actual_topic = f"Math (Quant) - strictly focusing on {specific_chapter}"
+                
+            with st.spinner(f"Generating a {difficulty} match for {actual_topic}..."):
+                prompt = f"Generate a 25-question multiple-choice test for SSC CGL level. Subject: {actual_topic}. Difficulty Level: {difficulty}. Return ONLY valid JSON format as a list of dictionaries with exactly these keys: 'question', 'options' (list of 4 strings), 'answer' (the exact correct option string), and 'explanation' (a detailed 2-sentence explanation)."
                 try:
                     ai_response = client.models.generate_content(model="gemini-3.5-flash", contents=prompt)
                     raw_text = ai_response.text.replace("```json", "").replace("```", "").strip()
@@ -197,13 +221,13 @@ with tab1:
                         "username": current_user,
                         "test_data": test_data,
                         "start_time": time.time(),
-                        "focus_topic": focus_topic,
+                        "focus_topic": actual_topic,
                         "difficulty": difficulty
                     }).execute()
 
                     st.session_state['current_test'] = test_data
                     st.session_state['start_time'] = time.time()
-                    st.session_state['current_focus'] = focus_topic
+                    st.session_state['current_focus'] = actual_topic
                     st.session_state['current_difficulty'] = difficulty
                     
                     st.session_state['q_index'] = 0
