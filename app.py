@@ -16,17 +16,36 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 st.set_page_config(page_title="SSC/CPO AI Trainer", layout="wide")
 
-# --- LOGIN SCREEN ---
+# --- SECURE LOGIN SCREEN ---
 if 'username' not in st.session_state:
-    st.title("🛑 Hold Up. Identify Yourself.")
-    st.write("Welcome to the 5-Stack Training Camp. Enter your tag to access the tests.")
-    user_input = st.text_input("Enter your Username:")
+    st.title("🛑 Secure Login")
+    st.write("Enter your Tag and a 4-Digit PIN. First time logins will automatically register your account.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        user_input = st.text_input("Username").strip()
+    with col2:
+        pin_input = st.text_input("4-Digit PIN", type="password").strip()
+        
     if st.button("Enter Arena"):
-        if user_input.strip():
-            st.session_state['username'] = user_input.strip()
-            st.rerun()
+        if user_input and pin_input:
+            # Check database for user
+            response = supabase.table("players").select("*").eq("username", user_input).execute()
+            if response.data:
+                # User exists, check PIN
+                if response.data[0]['pin'] == pin_input:
+                    st.session_state['username'] = user_input
+                    st.rerun()
+                else:
+                    st.error("❌ Wrong PIN! Stop trying to hack your friend's account.")
+            else:
+                # New user, create account
+                supabase.table("players").insert({"username": user_input, "pin": pin_input}).execute()
+                st.success("New account registered!")
+                st.session_state['username'] = user_input
+                st.rerun()
         else:
-            st.error("Don't be shy, type a name. No guests allowed.")
+            st.warning("Fill in both fields.")
     st.stop()
 
 # --- MAIN APP ---
@@ -42,10 +61,22 @@ difficulty = st.sidebar.selectbox("Select Difficulty", ["Easy", "Moderate", "Har
 test_time_limit = st.sidebar.slider("Time Limit (Minutes)", 10, 60, 30)
 
 st.title(f"🚀 SSC/CPO Training Camp")
-tab1, tab2, tab3 = st.tabs(["⚔️ The Arena (Take Tests)", "🏆 Leaderboard", "📺 Match VODs (Past Tests)"])
+
+# --- AUTO-SAVE RECOVERY SYSTEM ---
+# If a test is not in current memory, check the database to see if they were in the middle of one
+if 'current_test' not in st.session_state and 'review_data' not in st.session_state:
+    recovery = supabase.table("active_sessions").select("*").eq("username", current_user).execute()
+    if recovery.data:
+        saved_session = recovery.data[0]
+        st.session_state['current_test'] = saved_session['test_data']
+        st.session_state['start_time'] = saved_session['start_time']
+        st.session_state['current_focus'] = saved_session['focus_topic']
+        st.session_state['current_difficulty'] = saved_session['difficulty']
+        st.warning("🔄 Recovered your active test! (Note: Radio buttons reset on refresh, but the questions are saved).")
+
+tab1, tab2, tab3 = st.tabs(["⚔️ The Arena", "🏆 Leaderboard", "📺 Match VODs"])
 
 with tab1:
-    # --- AI Analytics Dashboard ---
     response = supabase.table("error_log").select("topic").eq("username", current_user).execute()
     weakest_topic = None
 
@@ -53,11 +84,8 @@ with tab1:
         topics = [row['topic'] for row in response.data]
         topic_counts = Counter(topics)
         weakest_topic = topic_counts.most_common(1)[0][0]
-        st.error(f"💀 **AI Roast:** You are bottom-fragging in **{weakest_topic}**. Fix your accuracy here.")
-    else:
-        st.info("No errors logged yet! Go take a test.")
+        st.error(f"💀 **AI Roast:** You are bottom-fragging in **{weakest_topic}**.")
 
-    # Hide generation buttons if a test OR a review is currently active
     if 'current_test' not in st.session_state and 'review_data' not in st.session_state:
         st.write("---")
         col1, col2 = st.columns(2)
@@ -67,30 +95,41 @@ with tab1:
             start_weakest = st.button("🔥 Generate Weakest Topic Test", disabled=not weakest_topic)
 
         def generate_ai_test(focus_topic):
-            with st.spinner(f"AI is cooking a 25-question {difficulty} test for {focus_topic}. Fetching explanations..."):
-                # NEW PROMPT: Forces AI to give explanations
-                prompt = f"Generate a 25-question multiple-choice test for SSC CGL level. Subject: {focus_topic}. Difficulty Level: {difficulty}. Return ONLY valid JSON format as a list of dictionaries with exactly these keys: 'question', 'options' (list of 4 strings), 'answer' (the exact correct option string), and 'explanation' (a detailed 2-sentence explanation of why the answer is correct)."
+            with st.spinner(f"Cooking a 25-question {difficulty} test for {focus_topic}..."):
+                prompt = f"Generate a 25-question multiple-choice test for SSC CGL level. Subject: {focus_topic}. Difficulty Level: {difficulty}. Return ONLY valid JSON format as a list of dictionaries with exactly these keys: 'question', 'options' (list of 4 strings), 'answer' (the exact correct option string), and 'explanation' (a detailed 2-sentence explanation)."
                 try:
                     ai_response = client.models.generate_content(model="gemini-3.5-flash", contents=prompt)
                     raw_text = ai_response.text.replace("```json", "").replace("```", "").strip()
-                    st.session_state['current_test'] = json.loads(raw_text)
+                    test_data = json.loads(raw_text)
+                    
+                    # SAVE TO DATABASE SO IT SURVIVES REFRESH
+                    supabase.table("active_sessions").upsert({
+                        "username": current_user,
+                        "test_data": test_data,
+                        "start_time": time.time(),
+                        "focus_topic": focus_topic,
+                        "difficulty": difficulty
+                    }).execute()
+
+                    st.session_state['current_test'] = test_data
                     st.session_state['start_time'] = time.time()
                     st.session_state['current_focus'] = focus_topic
+                    st.session_state['current_difficulty'] = difficulty
                     st.rerun() 
                 except Exception as e:
-                    st.error(f"Failed to generate test. Stop spamming and try again.")
+                    st.error(f"Failed to generate test.")
 
         if start_standard:
             generate_ai_test(selected_subject)
         elif start_weakest and weakest_topic:
             generate_ai_test(weakest_topic)
 
-    # --- Render the interactive test with JS Timer ---
     if 'current_test' in st.session_state:
         st.write("---")
-        st.subheader(f"📝 Active Test: {st.session_state['current_focus']} ({difficulty})")
+        # Grab difficulty safely in case of older saved sessions
+        diff_label = st.session_state.get('current_difficulty', 'Unknown')
+        st.subheader(f"📝 Active Test: {st.session_state['current_focus']} ({diff_label})")
         
-        # Pure HTML/JS Timer so it doesn't freeze Python
         timer_html = f"""
         <div style="background-color: #2b2b2b; color: #ff4b4b; padding: 10px; border-radius: 8px; text-align: center; font-family: sans-serif; font-size: 24px; font-weight: bold; border: 2px solid #ff4b4b;">
             <span id="clock">⏳ Loading Timer...</span>
@@ -139,18 +178,16 @@ with tab1:
                         "correct_answer": q['answer']
                     }).execute()
                 
-                # Bundle the full data including explanation
                 review_data.append({
                     "question": q['question'],
                     "your_answer": ans if ans else "Left Blank",
                     "correct_answer": q['answer'],
                     "status": status,
-                    "explanation": q.get('explanation', 'AI forgot to write an explanation for this one.')
+                    "explanation": q.get('explanation', 'AI forgot to write an explanation.')
                 })
             
             total_q = len(st.session_state['current_test'])
             
-            # Save EVERYTHING to history so you can review it later
             supabase.table("test_history").insert({
                 "username": current_user,
                 "subject": st.session_state['current_focus'],
@@ -159,7 +196,9 @@ with tab1:
                 "review_data": review_data
             }).execute()
             
-            # Setup immediate post-match screen
+            # WIPE ACTIVE SESSION FROM DB ON SUBMIT
+            supabase.table("active_sessions").delete().eq("username", current_user).execute()
+            
             st.session_state['review_data'] = review_data
             st.session_state['last_score'] = score
             st.session_state['last_total'] = total_q
@@ -167,7 +206,6 @@ with tab1:
             del st.session_state['current_test']
             st.rerun()
 
-    # --- IMMEDIATE POST-MATCH REVIEW SCREEN ---
     if 'review_data' in st.session_state:
         st.write("---")
         st.header("📋 Post-Match Review")
@@ -200,13 +238,10 @@ with tab2:
 
 with tab3:
     st.subheader(f"📺 {current_user}'s Match VODs (Past Tests)")
-    st.write("Review all the tests you have taken previously to study the explanations.")
-    
     past_tests = supabase.table("test_history").select("*").eq("username", current_user).order("created_at", desc=True).execute()
     
     if past_tests.data:
         for test in past_tests.data:
-            # Format the date nicely
             date_str = str(test['created_at'])[:10]
             score_ratio = f"{test['score']}/{test['total']}"
             
@@ -217,7 +252,5 @@ with tab3:
                         st.write(f"**Your Answer:** {q_data['your_answer']} | **Correct:** {q_data['correct_answer']}")
                         st.success(f"💡 {q_data.get('explanation', 'No explanation.')}")
                         st.divider()
-                else:
-                    st.write("Older test - no review data was saved.")
     else:
         st.info("You haven't taken any tests to review yet.")
