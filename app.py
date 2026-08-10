@@ -15,72 +15,96 @@ supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 # --- PAGE CONFIG MUST BE FIRST ---
-st.set_page_config(page_title="SSC/CPO AI Trainer", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="RADIANT: SSC Arena", layout="wide", initial_sidebar_state="expanded")
 
-# --- 🎨 GOATED CUSTOM CSS INJECTION ---
+# --- 🎨 PRO ESPORTS DARK UI INJECTION ---
 st.markdown("""
 <style>
-    /* Force Dark Mode aesthetic */
+    /* Premium Dark Mode Background */
     .stApp {
-        background-color: #0e1117;
-        color: #ffffff;
+        background-color: #0d1117;
+        color: #e6edf3;
     }
     
-    /* Hide default Streamlit headers and footers to look like a standalone pro app */
+    /* Hide Streamlit Watermarks & Menus */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
     /* Sleek Sidebar */
     [data-testid="stSidebar"] {
-        background-color: #161b22;
+        background-color: #010409;
         border-right: 1px solid #30363d;
     }
+    [data-testid="stSidebar"] * {
+        color: #e6edf3 !important;
+    }
     
-    /* Custom Button Styling with Neon Hover Effects */
+    /* Pro Button Styling (Crisp borders, uppercase, hover glow) */
     .stButton>button {
-        border-radius: 6px;
-        border: 1px solid #ff4b4b;
-        background-color: #1e1e2f;
-        color: #ff4b4b;
+        border-radius: 4px;
+        border: 1px solid #f85149;
+        background-color: transparent;
+        color: #f85149 !important;
         font-weight: 600;
-        transition: 0.3s;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        transition: 0.3s all ease-in-out;
     }
     .stButton>button:hover {
-        border: 1px solid #ff4b4b;
-        background-color: #ff4b4b;
-        color: white;
-        box-shadow: 0 0 10px #ff4b4b;
+        background-color: #f85149;
+        color: #ffffff !important;
+        box-shadow: 0 0 15px rgba(248, 81, 73, 0.4);
+        transform: translateY(-2px);
     }
     
-    /* Cool Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 15px;
+    /* Disabled Buttons (Greyed out nicely) */
+    .stButton>button:disabled {
+        border: 1px solid #30363d;
+        background-color: #21262d;
+        color: #8b949e !important;
+        box-shadow: none;
+        transform: none;
     }
+    
+    /* ---- THE TAB VISIBILITY FIX ---- */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+        background-color: transparent;
+    }
+    
+    /* Inactive Tabs - Bright Silver Text */
     .stTabs [data-baseweb="tab"] {
         background-color: transparent;
-        padding: 10px 20px;
+        color: #8b949e !important; 
+        font-size: 16px;
+        font-weight: 500;
+        padding-bottom: 10px;
     }
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #c9d1d9 !important;
+    }
+    
+    /* Active Tab - Glowing Crimson */
     .stTabs [aria-selected="true"] {
-        border-bottom: 3px solid #ff4b4b;
-        color: #ff4b4b !important;
-        font-weight: bold;
+        border-bottom: 3px solid #f85149;
+        color: #f85149 !important; 
+        font-weight: 700;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # --- SECURE LOGIN SCREEN ---
 if 'username' not in st.session_state:
-    st.markdown("<h1 style='text-align: center; color: #ff4b4b;'>🛑 Secure Access</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>Enter your Tag and a 4-Digit PIN. First time logins will automatically register your account.</p>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #f85149;'>🔐 SECURE MAINFRAME</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Enter your Player Tag and 4-Digit PIN to connect to the server.</p>", unsafe_allow_html=True)
     
-    # Center the login box
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        user_input = st.text_input("Username").strip()
+        user_input = st.text_input("Player Tag").strip()
         pin_input = st.text_input("4-Digit PIN", type="password").strip()
         
-        if st.button("Enter Arena", use_container_width=True):
+        if st.button("Connect to Server", use_container_width=True):
             if user_input and pin_input:
                 response = supabase.table("players").select("*").eq("username", user_input).execute()
                 if response.data:
@@ -88,30 +112,30 @@ if 'username' not in st.session_state:
                         st.session_state['username'] = user_input
                         st.rerun()
                     else:
-                        st.error("❌ Wrong PIN! Stop trying to hack your friend's account.")
+                        st.error("❌ Access Denied. Invalid PIN.")
                 else:
                     supabase.table("players").insert({"username": user_input, "pin": pin_input}).execute()
-                    st.success("New account registered!")
+                    st.success("New agent registered!")
                     st.session_state['username'] = user_input
                     st.rerun()
             else:
-                st.warning("Fill in both fields.")
+                st.warning("Missing credentials.")
     st.stop()
 
 # --- MAIN APP ---
 current_user = st.session_state['username']
-st.sidebar.markdown(f"### 👤 Player: <span style='color:#ff4b4b;'>{current_user}</span>", unsafe_allow_html=True)
-if st.sidebar.button("Logout"):
+st.sidebar.markdown(f"### 🕹️ Agent: <span style='color:#f85149;'>{current_user}</span>", unsafe_allow_html=True)
+if st.sidebar.button("Disconnect"):
     del st.session_state['username']
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.header("⚙️ Exam Settings")
-selected_subject = st.sidebar.selectbox("Select Subject", ["GK (Polity, History, etc.)", "Math (Quant)", "English Comprehension", "General Intelligence (Reasoning)"])
-difficulty = st.sidebar.selectbox("Select Difficulty", ["Easy", "Moderate", "Hard"])
-test_time_limit = st.sidebar.slider("Time Limit (Minutes)", 10, 60, 30)
+st.sidebar.header("⚙️ Match Settings")
+selected_subject = st.sidebar.selectbox("Queue Select", ["GK (Polity, History, etc.)", "Math (Quant)", "English Comprehension", "General Intelligence (Reasoning)"])
+difficulty = st.sidebar.selectbox("Difficulty Tier", ["Easy", "Moderate", "Hard"])
+test_time_limit = st.sidebar.slider("Match Timer (Minutes)", 10, 60, 30)
 
-st.title(f"🚀 SSC/CPO Training Camp")
+st.title(f"⚡ RADIANT: SSC Combat Arena")
 
 # --- AUTO-SAVE RECOVERY SYSTEM ---
 if 'current_test' not in st.session_state and 'review_data' not in st.session_state:
@@ -125,9 +149,9 @@ if 'current_test' not in st.session_state and 'review_data' not in st.session_st
         
         st.session_state['q_index'] = 0
         st.session_state['answers'] = {i: None for i in range(len(st.session_state['current_test']))}
-        st.warning("🔄 Recovered your active test!")
+        st.warning("🔄 Reconnected to active match!")
 
-tab1, tab2, tab3 = st.tabs(["⚔️ The Arena", "🏆 Leaderboard", "📺 Match VODs"])
+tab1, tab2, tab3 = st.tabs(["🎮 Ranked Match", "🏅 Global Top 500", "📼 VOD Reviews"])
 
 with tab1:
     response = supabase.table("error_log").select("topic").eq("username", current_user).execute()
@@ -137,18 +161,18 @@ with tab1:
         topics = [row['topic'] for row in response.data]
         topic_counts = Counter(topics)
         weakest_topic = topic_counts.most_common(1)[0][0]
-        st.error(f"💀 **AI Roast:** You are bottom-fragging in **{weakest_topic}**.")
+        st.error(f"💀 **AI Analytics:** You are bottom-fragging in **{weakest_topic}**. Queue this up to fix your accuracy.")
 
     if 'current_test' not in st.session_state and 'review_data' not in st.session_state:
         st.write("---")
         col1, col2 = st.columns(2)
         with col1:
-            start_standard = st.button(f"📚 Start {selected_subject} Test", use_container_width=True)
+            start_standard = st.button(f"🎯 Queue Standard Match", use_container_width=True)
         with col2:
-            start_weakest = st.button("🔥 Generate Weakest Topic Test", disabled=not weakest_topic, use_container_width=True)
+            start_weakest = st.button("🔥 Queue Weakness Drill", disabled=not weakest_topic, use_container_width=True)
 
         def generate_ai_test(focus_topic):
-            with st.spinner(f"Cooking a 25-question {difficulty} test for {focus_topic}..."):
+            with st.spinner(f"Generating a {difficulty} match for {focus_topic}..."):
                 prompt = f"Generate a 25-question multiple-choice test for SSC CGL level. Subject: {focus_topic}. Difficulty Level: {difficulty}. Return ONLY valid JSON format as a list of dictionaries with exactly these keys: 'question', 'options' (list of 4 strings), 'answer' (the exact correct option string), and 'explanation' (a detailed 2-sentence explanation)."
                 try:
                     ai_response = client.models.generate_content(model="gemini-3.5-flash", contents=prompt)
@@ -172,7 +196,7 @@ with tab1:
                     st.session_state['answers'] = {i: None for i in range(len(test_data))}
                     st.rerun() 
                 except Exception as e:
-                    st.error(f"Failed to generate test. Try again.")
+                    st.error(f"Matchmaking failed. Try again.")
 
         if start_standard:
             generate_ai_test(selected_subject)
@@ -184,8 +208,8 @@ with tab1:
         diff_label = st.session_state.get('current_difficulty', 'Unknown')
         
         timer_html = f"""
-        <div style="background-color: #1e1e2f; color: #ff4b4b; padding: 10px; border-radius: 5px; text-align: center; font-family: monospace; font-size: 22px; font-weight: bold; border: 1px solid #ff4b4b; margin-bottom: 10px; box-shadow: 0 0 10px rgba(255, 75, 75, 0.2);">
-            <span id="clock">⏳ Loading Timer...</span>
+        <div style="background-color: #010409; color: #f85149; padding: 10px; border-radius: 4px; text-align: center; font-family: monospace; font-size: 24px; font-weight: bold; border: 1px solid #f85149; margin-bottom: 15px; box-shadow: 0 0 10px rgba(248, 81, 73, 0.2);">
+            <span id="clock">⏳ Syncing Timer...</span>
         </div>
         <script>
             var countDownDate = new Date().getTime() + ({test_time_limit} * 60 * 1000);
@@ -194,15 +218,19 @@ with tab1:
                 var distance = countDownDate - now;
                 var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
                 var seconds = Math.floor((distance % (1000 * 60)) / 1000);
-                document.getElementById("clock").innerHTML = "⏱️ Time Left: " + minutes + "m " + seconds + "s";
+                
+                // Add leading zero to seconds
+                if(seconds < 10) {{ seconds = "0" + seconds; }}
+                
+                document.getElementById("clock").innerHTML = "⏱️ Time Remaining: " + minutes + ":" + seconds;
                 if (distance < 0) {{
                     clearInterval(x);
-                    document.getElementById("clock").innerHTML = "🚨 TIME IS UP! SUBMIT NOW!";
+                    document.getElementById("clock").innerHTML = "🚨 MATCH OVER! SUBMIT NOW!";
                 }}
             }}, 1000);
         </script>
         """
-        components.html(timer_html, height=65)
+        components.html(timer_html, height=75)
 
         col_main, col_palette = st.columns([3, 1], gap="large")
         
@@ -211,12 +239,12 @@ with tab1:
         q_data = test_questions[current_idx]
         
         with col_main:
-            st.markdown(f"<h3 style='color: #ff4b4b;'>Question {current_idx + 1} of {len(test_questions)}</h3>", unsafe_allow_html=True)
+            st.markdown(f"<h3 style='color: #f85149;'>Target {current_idx + 1} / {len(test_questions)}</h3>", unsafe_allow_html=True)
             st.write(f"**{q_data['question']}**")
             
             options = q_data['options']
             default_idx = options.index(st.session_state['answers'][current_idx]) if st.session_state['answers'][current_idx] in options else None
-            selected_option = st.radio("Choose your answer:", options, index=default_idx, key=f"radio_{current_idx}")
+            selected_option = st.radio("Lock in your answer:", options, index=default_idx, key=f"radio_{current_idx}")
             
             if selected_option:
                 st.session_state['answers'][current_idx] = selected_option
@@ -224,11 +252,11 @@ with tab1:
             st.write("---")
             nav_col1, nav_col2, nav_col3 = st.columns(3)
             with nav_col1:
-                if st.button("⬅️ Previous", use_container_width=True) and current_idx > 0:
+                if st.button("⬅️ Previous Target", use_container_width=True) and current_idx > 0:
                     st.session_state['q_index'] -= 1
                     st.rerun()
             with nav_col2:
-                if st.button("🗑️ Clear", use_container_width=True):
+                if st.button("🗑️ Clear Selection", use_container_width=True):
                     st.session_state['answers'][current_idx] = None
                     st.rerun()
             with nav_col3:
@@ -237,19 +265,19 @@ with tab1:
                     st.rerun()
                     
         with col_palette:
-            st.markdown("### 🗺️ Palette")
-            st.write("🟩 Answered | ⬜ Blank")
+            st.markdown("### 🗺️ HUD Grid")
+            st.write("🔴 Locked | ⚪ Blank")
             
             grid_cols = st.columns(5)
             for i in range(len(test_questions)):
                 col_i = i % 5
-                status_emoji = "🟩" if st.session_state['answers'][i] else "⬜"
+                status_emoji = "🔴" if st.session_state['answers'][i] else "⚪"
                 if grid_cols[col_i].button(f"{status_emoji} {i+1}", key=f"navbtn_{i}"):
                     st.session_state['q_index'] = i
                     st.rerun()
                     
             st.write("---")
-            if st.button("🚨 SUBMIT EXAM", use_container_width=True):
+            if st.button("🛑 END MATCH & SUBMIT", use_container_width=True):
                 score = 0
                 time_spent = round((time.time() - st.session_state['start_time']) / 60, 2)
                 review_data = []
@@ -275,7 +303,7 @@ with tab1:
                         "your_answer": ans if ans else "Left Blank",
                         "correct_answer": q['answer'],
                         "status": status,
-                        "explanation": q.get('explanation', 'No explanation.')
+                        "explanation": q.get('explanation', 'Data corrupted. No explanation generated.')
                     })
                 
                 total_q = len(test_questions)
@@ -302,36 +330,36 @@ with tab1:
 
     if 'review_data' in st.session_state:
         st.write("---")
-        st.header("📋 Post-Match Review")
-        st.subheader(f"Score: {st.session_state['last_score']} / {st.session_state['last_total']} (Time: {st.session_state['time_spent']} mins)")
+        st.header("📊 Post-Match Combat Report")
+        st.subheader(f"Final Score: {st.session_state['last_score']} / {st.session_state['last_total']} (Time: {st.session_state['time_spent']} mins)")
         
         for i, data in enumerate(st.session_state['review_data']):
-            with st.expander(f"Q{i+1}: {data['status']}"):
+            with st.expander(f"Target {i+1}: {data['status']}"):
                 st.write(f"**Question:** {data['question']}")
                 st.write(f"**Your Answer:** {data['your_answer']}")
                 st.write(f"**Correct Answer:** {data['correct_answer']}")
-                st.info(f"💡 **Explanation:** {data['explanation']}")
+                st.info(f"💡 **Intel:** {data['explanation']}")
 
-        if st.button("Close Review & Go Back to Arena", use_container_width=True):
+        if st.button("Return to Lobby", use_container_width=True):
             del st.session_state['review_data']
             st.rerun()
 
 with tab2:
-    st.subheader("🏆 Global Leaderboard")
+    st.subheader("🏆 Radiant Rankings")
     history_response = supabase.table("test_history").select("*").order("created_at", desc=True).limit(50).execute()
     
     if history_response.data:
         df = pd.DataFrame(history_response.data)
         df['Accuracy'] = (df['score'] / df['total'] * 100).round(1).astype(str) + '%'
         
-        st.write("### 🥇 Top Scores")
+        st.write("### 🥇 Top Agents")
         leaderboard = df.sort_values(by='score', ascending=False).head(10)
         st.dataframe(leaderboard[['username', 'subject', 'score', 'total', 'Accuracy']], use_container_width=True, hide_index=True)
     else:
-        st.info("No tests have been taken yet.")
+        st.info("Leaderboard is empty. Secure the first win.")
 
 with tab3:
-    st.subheader(f"📺 {current_user}'s Match VODs (Past Tests)")
+    st.subheader(f"📼 {current_user}'s Personal VODs")
     past_tests = supabase.table("test_history").select("*").eq("username", current_user).order("created_at", desc=True).execute()
     
     if past_tests.data:
@@ -342,9 +370,9 @@ with tab3:
             with st.expander(f"📅 {date_str} | {test['subject']} | Score: {score_ratio}"):
                 if test.get('review_data'):
                     for i, q_data in enumerate(test['review_data']):
-                        st.markdown(f"**Q{i+1}: {q_data['question']}** ({q_data['status']})")
+                        st.markdown(f"**Target {i+1}: {q_data['question']}** ({q_data['status']})")
                         st.write(f"**Your Answer:** {q_data['your_answer']} | **Correct:** {q_data['correct_answer']}")
-                        st.success(f"💡 {q_data.get('explanation', 'No explanation.')}")
+                        st.success(f"💡 {q_data.get('explanation', 'Data corrupted.')}")
                         st.divider()
     else:
-        st.info("You haven't taken any tests to review yet.")
+        st.info("No match history found. Get in the arena.")
