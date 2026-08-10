@@ -152,4 +152,199 @@ with tab1:
                 prompt = f"Generate a 25-question multiple-choice test for SSC CGL level. Subject: {focus_topic}. Difficulty Level: {difficulty}. Return ONLY valid JSON format as a list of dictionaries with exactly these keys: 'question', 'options' (list of 4 strings), 'answer' (the exact correct option string), and 'explanation' (a detailed 2-sentence explanation)."
                 try:
                     ai_response = client.models.generate_content(model="gemini-3.5-flash", contents=prompt)
-                    raw_text = ai_response.text.replace("```json", "").replace("
+                    raw_text = ai_response.text.replace("```json", "").replace("```", "").strip()
+                    test_data = json.loads(raw_text)
+                    
+                    supabase.table("active_sessions").upsert({
+                        "username": current_user,
+                        "test_data": test_data,
+                        "start_time": time.time(),
+                        "focus_topic": focus_topic,
+                        "difficulty": difficulty
+                    }).execute()
+
+                    st.session_state['current_test'] = test_data
+                    st.session_state['start_time'] = time.time()
+                    st.session_state['current_focus'] = focus_topic
+                    st.session_state['current_difficulty'] = difficulty
+                    
+                    st.session_state['q_index'] = 0
+                    st.session_state['answers'] = {i: None for i in range(len(test_data))}
+                    st.rerun() 
+                except Exception as e:
+                    st.error(f"Failed to generate test. Try again.")
+
+        if start_standard:
+            generate_ai_test(selected_subject)
+        elif start_weakest and weakest_topic:
+            generate_ai_test(weakest_topic)
+
+    if 'current_test' in st.session_state:
+        st.write("---")
+        diff_label = st.session_state.get('current_difficulty', 'Unknown')
+        
+        timer_html = f"""
+        <div style="background-color: #1e1e2f; color: #ff4b4b; padding: 10px; border-radius: 5px; text-align: center; font-family: monospace; font-size: 22px; font-weight: bold; border: 1px solid #ff4b4b; margin-bottom: 10px; box-shadow: 0 0 10px rgba(255, 75, 75, 0.2);">
+            <span id="clock">⏳ Loading Timer...</span>
+        </div>
+        <script>
+            var countDownDate = new Date().getTime() + ({test_time_limit} * 60 * 1000);
+            var x = setInterval(function() {{
+                var now = new Date().getTime();
+                var distance = countDownDate - now;
+                var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                var seconds = Math.floor((distance % (1000 * 60)) / 1000);
+                document.getElementById("clock").innerHTML = "⏱️ Time Left: " + minutes + "m " + seconds + "s";
+                if (distance < 0) {{
+                    clearInterval(x);
+                    document.getElementById("clock").innerHTML = "🚨 TIME IS UP! SUBMIT NOW!";
+                }}
+            }}, 1000);
+        </script>
+        """
+        components.html(timer_html, height=65)
+
+        col_main, col_palette = st.columns([3, 1], gap="large")
+        
+        test_questions = st.session_state['current_test']
+        current_idx = st.session_state['q_index']
+        q_data = test_questions[current_idx]
+        
+        with col_main:
+            st.markdown(f"<h3 style='color: #ff4b4b;'>Question {current_idx + 1} of {len(test_questions)}</h3>", unsafe_allow_html=True)
+            st.write(f"**{q_data['question']}**")
+            
+            options = q_data['options']
+            default_idx = options.index(st.session_state['answers'][current_idx]) if st.session_state['answers'][current_idx] in options else None
+            selected_option = st.radio("Choose your answer:", options, index=default_idx, key=f"radio_{current_idx}")
+            
+            if selected_option:
+                st.session_state['answers'][current_idx] = selected_option
+                
+            st.write("---")
+            nav_col1, nav_col2, nav_col3 = st.columns(3)
+            with nav_col1:
+                if st.button("⬅️ Previous", use_container_width=True) and current_idx > 0:
+                    st.session_state['q_index'] -= 1
+                    st.rerun()
+            with nav_col2:
+                if st.button("🗑️ Clear", use_container_width=True):
+                    st.session_state['answers'][current_idx] = None
+                    st.rerun()
+            with nav_col3:
+                if st.button("Save & Next ➡️", use_container_width=True) and current_idx < len(test_questions) - 1:
+                    st.session_state['q_index'] += 1
+                    st.rerun()
+                    
+        with col_palette:
+            st.markdown("### 🗺️ Palette")
+            st.write("🟩 Answered | ⬜ Blank")
+            
+            grid_cols = st.columns(5)
+            for i in range(len(test_questions)):
+                col_i = i % 5
+                status_emoji = "🟩" if st.session_state['answers'][i] else "⬜"
+                if grid_cols[col_i].button(f"{status_emoji} {i+1}", key=f"navbtn_{i}"):
+                    st.session_state['q_index'] = i
+                    st.rerun()
+                    
+            st.write("---")
+            if st.button("🚨 SUBMIT EXAM", use_container_width=True):
+                score = 0
+                time_spent = round((time.time() - st.session_state['start_time']) / 60, 2)
+                review_data = []
+
+                for i, q in enumerate(test_questions):
+                    ans = st.session_state['answers'][i]
+                    status = "Unattempted ⚪"
+                    
+                    if ans == q['answer']:
+                        score += 1
+                        status = "Correct ✅"
+                    elif ans is not None:
+                        status = "Wrong ❌"
+                        supabase.table("error_log").insert({
+                            "username": current_user,
+                            "topic": st.session_state['current_focus'],
+                            "question": q['question'],
+                            "correct_answer": q['answer']
+                        }).execute()
+                    
+                    review_data.append({
+                        "question": q['question'],
+                        "your_answer": ans if ans else "Left Blank",
+                        "correct_answer": q['answer'],
+                        "status": status,
+                        "explanation": q.get('explanation', 'No explanation.')
+                    })
+                
+                total_q = len(test_questions)
+                
+                supabase.table("test_history").insert({
+                    "username": current_user,
+                    "subject": st.session_state['current_focus'],
+                    "score": score,
+                    "total": total_q,
+                    "review_data": review_data
+                }).execute()
+                
+                supabase.table("active_sessions").delete().eq("username", current_user).execute()
+                
+                st.session_state['review_data'] = review_data
+                st.session_state['last_score'] = score
+                st.session_state['last_total'] = total_q
+                st.session_state['time_spent'] = time_spent
+                
+                del st.session_state['current_test']
+                del st.session_state['q_index']
+                del st.session_state['answers']
+                st.rerun()
+
+    if 'review_data' in st.session_state:
+        st.write("---")
+        st.header("📋 Post-Match Review")
+        st.subheader(f"Score: {st.session_state['last_score']} / {st.session_state['last_total']} (Time: {st.session_state['time_spent']} mins)")
+        
+        for i, data in enumerate(st.session_state['review_data']):
+            with st.expander(f"Q{i+1}: {data['status']}"):
+                st.write(f"**Question:** {data['question']}")
+                st.write(f"**Your Answer:** {data['your_answer']}")
+                st.write(f"**Correct Answer:** {data['correct_answer']}")
+                st.info(f"💡 **Explanation:** {data['explanation']}")
+
+        if st.button("Close Review & Go Back to Arena", use_container_width=True):
+            del st.session_state['review_data']
+            st.rerun()
+
+with tab2:
+    st.subheader("🏆 Global Leaderboard")
+    history_response = supabase.table("test_history").select("*").order("created_at", desc=True).limit(50).execute()
+    
+    if history_response.data:
+        df = pd.DataFrame(history_response.data)
+        df['Accuracy'] = (df['score'] / df['total'] * 100).round(1).astype(str) + '%'
+        
+        st.write("### 🥇 Top Scores")
+        leaderboard = df.sort_values(by='score', ascending=False).head(10)
+        st.dataframe(leaderboard[['username', 'subject', 'score', 'total', 'Accuracy']], use_container_width=True, hide_index=True)
+    else:
+        st.info("No tests have been taken yet.")
+
+with tab3:
+    st.subheader(f"📺 {current_user}'s Match VODs (Past Tests)")
+    past_tests = supabase.table("test_history").select("*").eq("username", current_user).order("created_at", desc=True).execute()
+    
+    if past_tests.data:
+        for test in past_tests.data:
+            date_str = str(test['created_at'])[:10]
+            score_ratio = f"{test['score']}/{test['total']}"
+            
+            with st.expander(f"📅 {date_str} | {test['subject']} | Score: {score_ratio}"):
+                if test.get('review_data'):
+                    for i, q_data in enumerate(test['review_data']):
+                        st.markdown(f"**Q{i+1}: {q_data['question']}** ({q_data['status']})")
+                        st.write(f"**Your Answer:** {q_data['your_answer']} | **Correct:** {q_data['correct_answer']}")
+                        st.success(f"💡 {q_data.get('explanation', 'No explanation.')}")
+                        st.divider()
+    else:
+        st.info("You haven't taken any tests to review yet.")
