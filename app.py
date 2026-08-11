@@ -64,10 +64,11 @@ st.markdown("""
         transform: none;
     }
     
-    div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {
+    div[data-baseweb="select"] > div, div[data-baseweb="input"] > div, textarea {
         background-color: #282a2d !important;
         border: 1px solid #444746 !important;
         border-radius: 8px !important;
+        color: #e3e3e3 !important;
     }
     
     .stTabs [data-baseweb="tab-list"] {
@@ -87,6 +88,16 @@ st.markdown("""
         border-bottom: 3px solid #8ab4f8;
         color: #8ab4f8 !important; 
     }
+    
+    /* Chat Box Styling */
+    .chat-msg {
+        padding: 10px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        background-color: #1e1f22;
+        border: 1px solid #444746;
+    }
+    .chat-user { font-weight: bold; color: #8ab4f8; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -110,7 +121,7 @@ if 'username' not in st.session_state:
                     else:
                         st.error("❌ Access Denied. Invalid PIN.")
                 else:
-                    supabase.table("players").insert({"username": user_input, "pin": pin_input}).execute()
+                    supabase.table("players").insert({"username": user_input, "pin": pin_input, "last_seen": time.time()}).execute()
                     st.success("New agent registered!")
                     st.session_state['username'] = user_input
                     st.rerun()
@@ -121,7 +132,10 @@ if 'username' not in st.session_state:
 # --- MAIN APP ---
 current_user = st.session_state['username']
 
-# FETCH PLAYER AVATAR
+# UPDATE LAST SEEN STATUS (Runs every time they click anything)
+supabase.table("players").update({"last_seen": time.time()}).eq("username", current_user).execute()
+
+# FETCH PLAYER AVATAR & BIO
 player_data = supabase.table("players").select("*").eq("username", current_user).execute().data[0]
 avatar_base64 = player_data.get("avatar")
 
@@ -181,7 +195,7 @@ if 'current_test' not in st.session_state and 'review_data' not in st.session_st
         st.session_state['answers'] = {i: None for i in range(len(st.session_state['current_test']))}
         st.warning("🔄 Reconnected to active match!")
 
-tab1, tab2, tab3, tab4 = st.tabs(["🎮 Combat Arena", "🏅 Leaderboards & Stats", "📼 VOD Reviews", "👤 Agent Profile"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🎮 Combat Arena", "🏅 Leaderboards", "📼 VOD Reviews", "👤 Agent Profile", "💬 Comm Center"])
 
 with tab1:
     response = supabase.table("error_log").select("topic").eq("username", current_user).execute()
@@ -252,9 +266,7 @@ with tab1:
                 var distance = countDownDate - now;
                 var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
                 var seconds = Math.floor((distance % (1000 * 60)) / 1000);
-                
                 if(seconds < 10) {{ seconds = "0" + seconds; }}
-                
                 document.getElementById("clock").innerHTML = "⏱️ Time Remaining: " + minutes + ":" + seconds;
                 if (distance < 0) {{
                     clearInterval(x);
@@ -300,7 +312,6 @@ with tab1:
         with col_palette:
             st.markdown("### 🗺️ HUD Grid")
             st.write("🔵 Locked | ⚪ Blank")
-            
             grid_cols = st.columns(5)
             for i in range(len(test_questions)):
                 col_i = i % 5
@@ -336,11 +347,10 @@ with tab1:
                         "your_answer": ans if ans else "Left Blank",
                         "correct_answer": q['answer'],
                         "status": status,
-                        "explanation": q.get('explanation', 'Data corrupted. No explanation generated.')
+                        "explanation": q.get('explanation', 'Data corrupted.')
                     })
                 
                 total_q = len(test_questions)
-                
                 supabase.table("test_history").insert({
                     "username": current_user,
                     "subject": st.session_state['current_focus'],
@@ -349,7 +359,6 @@ with tab1:
                     "time_spent": time_spent,
                     "review_data": review_data
                 }).execute()
-                
                 supabase.table("active_sessions").delete().eq("username", current_user).execute()
                 
                 st.session_state['review_data'] = review_data
@@ -380,14 +389,13 @@ with tab1:
 
 with tab2:
     history_response = supabase.table("test_history").select("*").limit(5000).execute()
-    
     if history_response.data:
         df = pd.DataFrame(history_response.data)
         if 'time_spent' not in df.columns:
             df['time_spent'] = 0.0
         df['time_spent'] = df['time_spent'].fillna(0)
         
-        st.write("### 🎖️ Top Grinders (All Matches & Drill Types)")
+        st.write("### 🎖️ Top Grinders (All Matches)")
         grind_stats = df.groupby('username').agg(
             Total_Matches=('score', 'count'), 
             Total_Time_Mins=('time_spent', 'sum')
@@ -395,16 +403,13 @@ with tab2:
         grind_stats['Total_Time_Mins'] = grind_stats['Total_Time_Mins'].round(2)
         grind_stats = grind_stats.sort_values(by=['Total_Matches', 'Total_Time_Mins'], ascending=[False, False])
         st.dataframe(grind_stats, use_container_width=True, hide_index=True)
-        
         st.divider()
 
         st.write("### 🏆 Official Leaderboards (25-Target Ranked Matches ONLY)")
         df_25 = df[df['total'] == 25].copy()
-        
         if not df_25.empty:
             df_25['Accuracy'] = (df_25['score'] / df_25['total'] * 100).round(1).astype(str) + '%'
             df_25['Time (Mins)'] = df_25['time_spent'].round(2)
-            
             lb_tabs = st.tabs(["🧮 Math", "🌍 GK", "🧠 Reasoning", "📖 English", "🔥 Overall"])
             
             def render_lb(filtered_df):
@@ -412,27 +417,21 @@ with tab2:
                     leaderboard = filtered_df.sort_values(by=['score', 'Time (Mins)'], ascending=[False, True]).head(20)
                     st.dataframe(leaderboard[['username', 'subject', 'score', 'total', 'Accuracy', 'Time (Mins)']], use_container_width=True, hide_index=True)
                 else:
-                    st.info("No records for this category yet. Be the first to claim Rank 1!")
+                    st.info("No records for this category yet.")
 
-            with lb_tabs[0]:
-                render_lb(df_25[df_25['subject'].str.contains("Math", na=False)])
-            with lb_tabs[1]:
-                render_lb(df_25[df_25['subject'].str.contains("GK", na=False)])
-            with lb_tabs[2]:
-                render_lb(df_25[df_25['subject'].str.contains("Reasoning", na=False)])
-            with lb_tabs[3]:
-                render_lb(df_25[df_25['subject'].str.contains("English", na=False)])
-            with lb_tabs[4]:
-                render_lb(df_25)
+            with lb_tabs[0]: render_lb(df_25[df_25['subject'].str.contains("Math", na=False)])
+            with lb_tabs[1]: render_lb(df_25[df_25['subject'].str.contains("GK", na=False)])
+            with lb_tabs[2]: render_lb(df_25[df_25['subject'].str.contains("Reasoning", na=False)])
+            with lb_tabs[3]: render_lb(df_25[df_25['subject'].str.contains("English", na=False)])
+            with lb_tabs[4]: render_lb(df_25)
         else:
-            st.warning("No full 25-Target matches have been completed yet. Queue up a full match to hit the boards!")
+            st.warning("No full 25-Target matches have been completed yet.")
     else:
         st.info("Leaderboard is empty. Secure the first win.")
 
 with tab3:
     st.subheader(f"📼 {current_user}'s Personal VODs")
     past_tests = supabase.table("test_history").select("*").eq("username", current_user).order("created_at", desc=True).execute()
-    
     if past_tests.data:
         for test in past_tests.data:
             date_str = str(test['created_at'])[:10]
@@ -448,24 +447,100 @@ with tab3:
                         st.success(f"💡 {q_data.get('explanation', 'Data corrupted.')}")
                         st.divider()
     else:
-        st.info("No match history found. Get in the arena.")
+        st.info("No match history found.")
 
 with tab4:
     st.subheader("👤 Agent ID Card")
-    st.write("Upload a profile picture to customize your HUD and loadout screen.")
+    st.write("Customize your loadout screen so the squad knows who they are dealing with.")
     
-    uploaded_file = st.file_uploader("Select an Image (PNG/JPG)", type=["png", "jpg", "jpeg"])
+    col_pic, col_bio = st.columns([1, 2])
     
-    if uploaded_file is not None:
-        bytes_data = uploaded_file.getvalue()
-        b64_str = base64.b64encode(bytes_data).decode()
-        
-        # Quick preview
-        st.markdown(f'<img src="data:image/png;base64,{b64_str}" style="width: 150px; height: 150px; border-radius: 50%; object-fit: cover; border: 2px solid #8ab4f8;">', unsafe_allow_html=True)
-        
-        if st.button("💾 Save Profile Picture", use_container_width=True):
-            with st.spinner("Encrypting ID Card..."):
+    with col_pic:
+        st.write("**Profile Picture**")
+        uploaded_file = st.file_uploader("Select an Image (PNG/JPG)", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
+        if uploaded_file is not None:
+            bytes_data = uploaded_file.getvalue()
+            b64_str = base64.b64encode(bytes_data).decode()
+            if st.button("💾 Save Picture", use_container_width=True):
                 supabase.table("players").update({"avatar": b64_str}).eq("username", current_user).execute()
-            st.success("Agent ID Updated! Rebooting system...")
-            time.sleep(1)
+                st.success("Avatar Saved!")
+                st.rerun()
+
+    with col_bio:
+        st.write("**Agent Bio**")
+        current_bio = player_data.get("bio", "")
+        new_bio = st.text_area("Write something about yourself...", value=current_bio if current_bio else "", height=120, max_chars=300)
+        if st.button("💾 Save Bio", use_container_width=True):
+            supabase.table("players").update({"bio": new_bio}).eq("username", current_user).execute()
+            st.success("Bio Updated!")
             st.rerun()
+
+with tab5:
+    st.subheader("💬 Comm Center & Global Chat")
+    st.write("Connect with the squad. Note: You must interact with the page to load new messages.")
+    
+    col_chat, col_roster = st.columns([3, 1], gap="large")
+    
+    with col_roster:
+        st.markdown("### 🟢 Online Agents")
+        st.write("Active in the last 5 minutes:")
+        # Fetch users active in the last 300 seconds
+        active_threshold = time.time() - 300 
+        online_users = supabase.table("players").select("username").gte("last_seen", active_threshold).execute()
+        
+        if online_users.data:
+            for u in online_users.data:
+                st.markdown(f"- 🟢 **{u['username']}**")
+        else:
+            st.write("No one is online right now.")
+            
+        st.divider()
+        st.markdown("### 🔍 Inspect Agent")
+        all_players = supabase.table("players").select("username").execute()
+        player_list = [p['username'] for p in all_players.data]
+        inspect_target = st.selectbox("Select Agent to view Profile", player_list)
+        
+        if st.button("View ID Card", use_container_width=True):
+            target_data = supabase.table("players").select("*").eq("username", inspect_target).execute().data[0]
+            
+            # Use an expander to show the ID Card right below
+            with st.expander(f"🪪 {inspect_target}'s ID Card", expanded=True):
+                target_avatar = target_data.get("avatar")
+                if target_avatar:
+                    st.markdown(f'<img src="data:image/png;base64,{target_avatar}" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 2px solid #8ab4f8;">', unsafe_allow_html=True)
+                else:
+                    st.write("👤 No profile picture set.")
+                
+                st.write(f"**Bio:** {target_data.get('bio', 'This agent has not written a bio yet.')}")
+                
+                # Fetch quick stats
+                target_stats = supabase.table("test_history").select("score").eq("username", inspect_target).execute()
+                st.write(f"**Matches Played:** {len(target_stats.data)}")
+
+    with col_chat:
+        # Chat Input
+        new_msg = st.text_input("Send a message to Global Chat...", key="chat_input")
+        if st.button("Send Message", type="primary"):
+            if new_msg.strip():
+                supabase.table("global_chat").insert({
+                    "username": current_user,
+                    "message": new_msg.strip(),
+                    "timestamp": time.time()
+                }).execute()
+                st.rerun()
+                
+        st.write("---")
+        
+        # Load last 30 messages
+        chat_logs = supabase.table("global_chat").select("*").order("timestamp", desc=True).limit(30).execute()
+        
+        if chat_logs.data:
+            # Reverse to show oldest at top, newest at bottom of the feed
+            for log in reversed(chat_logs.data):
+                st.markdown(f"""
+                <div class="chat-msg">
+                    <span class="chat-user">{log['username']}:</span> {log['message']}
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("The Comm Center is quiet. Be the first to drop a message.")
