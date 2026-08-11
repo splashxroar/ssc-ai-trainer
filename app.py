@@ -103,6 +103,18 @@ if st.sidebar.button("Sign Out", use_container_width=True):
     st.rerun()
 
 st.sidebar.markdown("---")
+# --- NEW: ACTIVE AGENTS TRACKER ---
+st.sidebar.markdown("#### 🟢 Active Agents")
+active_threshold = time.time() - 300 # Tracks anyone active in the last 5 minutes
+online_users = supabase.table("players").select("username").gte("last_seen", active_threshold).execute()
+
+if online_users.data:
+    for u in online_users.data:
+        st.sidebar.markdown(f"- 🟢 **{u['username']}**")
+else:
+    st.sidebar.write("Only you are online.")
+
+st.sidebar.markdown("---")
 st.sidebar.header("Assessment Configuration")
 selected_subject = st.sidebar.selectbox("Subject Selection", ["GK (Polity, History, etc.)", "Math (Quant)", "English Comprehension", "General Intelligence (Reasoning)"])
 
