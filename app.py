@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import json
 import time
+import base64
 import pandas as pd
 import streamlit.components.v1 as components
 from collections import Counter
@@ -72,6 +73,7 @@ st.markdown("""
     .stTabs [data-baseweb="tab-list"] {
         gap: 24px;
         background-color: transparent;
+        flex-wrap: wrap;
     }
     .stTabs [data-baseweb="tab"] {
         background-color: transparent;
@@ -118,8 +120,31 @@ if 'username' not in st.session_state:
 
 # --- MAIN APP ---
 current_user = st.session_state['username']
-st.sidebar.markdown(f"### 🕹️ Agent: <span style='color:#8ab4f8;'>{current_user}</span>", unsafe_allow_html=True)
-if st.sidebar.button("Disconnect"):
+
+# FETCH PLAYER AVATAR
+player_data = supabase.table("players").select("*").eq("username", current_user).execute().data[0]
+avatar_base64 = player_data.get("avatar")
+
+# RENDER SIDEBAR AVATAR
+if avatar_base64:
+    st.sidebar.markdown(f'''
+        <div style="text-align: center;">
+            <img src="data:image/png;base64,{avatar_base64}" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 2px solid #8ab4f8; margin-bottom: 10px; box-shadow: 0 0 15px rgba(138, 180, 248, 0.2);">
+        </div>
+    ''', unsafe_allow_html=True)
+else:
+    st.sidebar.markdown(f'''
+        <div style="text-align: center;">
+            <div style="width: 120px; height: 120px; border-radius: 50%; background-color: #282a2d; border: 2px dashed #444746; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px; margin-left: auto; margin-right: auto;">
+                <span style="color: #80868b; font-size: 40px;">👤</span>
+            </div>
+        </div>
+    ''', unsafe_allow_html=True)
+
+st.sidebar.markdown(f"<h3 style='text-align: center;'>🕹️ Agent: <span style='color:#8ab4f8;'>{current_user}</span></h3>", unsafe_allow_html=True)
+
+col_disconnect, = st.sidebar.columns(1)
+if col_disconnect.button("Disconnect", use_container_width=True):
     del st.session_state['username']
     st.rerun()
 
@@ -136,9 +161,7 @@ if selected_subject == "Math (Quant)":
         "Mensuration", "Data Interpretation"
     ])
 
-# NEW: SELECT NUMBER OF QUESTIONS
 num_questions = st.sidebar.selectbox("Match Length (Targets)", [25, 15, 10])
-
 difficulty = st.sidebar.selectbox("Difficulty Tier", ["Easy", "Moderate", "Hard"])
 test_time_limit = st.sidebar.slider("Match Timer (Minutes)", 10, 60, 30)
 
@@ -158,7 +181,7 @@ if 'current_test' not in st.session_state and 'review_data' not in st.session_st
         st.session_state['answers'] = {i: None for i in range(len(st.session_state['current_test']))}
         st.warning("🔄 Reconnected to active match!")
 
-tab1, tab2, tab3 = st.tabs(["🎮 Combat Arena", "🏅 Leaderboards & Stats", "📼 VOD Reviews"])
+tab1, tab2, tab3, tab4 = st.tabs(["🎮 Combat Arena", "🏅 Leaderboards & Stats", "📼 VOD Reviews", "👤 Agent Profile"])
 
 with tab1:
     response = supabase.table("error_log").select("topic").eq("username", current_user).execute()
@@ -184,7 +207,6 @@ with tab1:
                 actual_topic = f"Math (Quant) - strictly focusing on {specific_chapter}"
                 
             with st.spinner(f"Generating a {num_questions}-target {difficulty} match for {actual_topic}..."):
-                # UPDATED PROMPT: Passes exact number of questions
                 prompt = f"Generate a {num_questions}-question multiple-choice test for SSC CGL level. Subject: {actual_topic}. Difficulty Level: {difficulty}. CRITICAL: Questions must be highly unique and completely randomized. Avoid standard generic templates. Seed: {time.time()}. Return ONLY valid JSON format as a list of dictionaries with exactly these keys: 'question', 'options' (list of 4 strings), 'answer' (the exact correct option string), and 'explanation' (a detailed 2-sentence explanation)."
                 try:
                     ai_response = client.models.generate_content(model="gemini-3.5-flash", contents=prompt)
@@ -279,7 +301,6 @@ with tab1:
             st.markdown("### 🗺️ HUD Grid")
             st.write("🔵 Locked | ⚪ Blank")
             
-            # Grid adjusted for custom number of questions
             grid_cols = st.columns(5)
             for i in range(len(test_questions)):
                 col_i = i % 5
@@ -358,34 +379,26 @@ with tab1:
             st.rerun()
 
 with tab2:
-    # Pulling a large limit so overall Grind Stats stay completely accurate
     history_response = supabase.table("test_history").select("*").limit(5000).execute()
     
     if history_response.data:
         df = pd.DataFrame(history_response.data)
-        
-        # Ensure time_spent is clean
         if 'time_spent' not in df.columns:
             df['time_spent'] = 0.0
         df['time_spent'] = df['time_spent'].fillna(0)
         
-        # --- NEW: GRIND STATS HALL OF FAME ---
         st.write("### 🎖️ Top Grinders (All Matches & Drill Types)")
         grind_stats = df.groupby('username').agg(
             Total_Matches=('score', 'count'), 
             Total_Time_Mins=('time_spent', 'sum')
         ).reset_index()
         grind_stats['Total_Time_Mins'] = grind_stats['Total_Time_Mins'].round(2)
-        # Sort by most matches, then total time
         grind_stats = grind_stats.sort_values(by=['Total_Matches', 'Total_Time_Mins'], ascending=[False, False])
         st.dataframe(grind_stats, use_container_width=True, hide_index=True)
         
         st.divider()
 
-        # --- OFFICIAL RANKED LEADERBOARDS (25 Questions ONLY) ---
         st.write("### 🏆 Official Leaderboards (25-Target Ranked Matches ONLY)")
-        
-        # Filter dataframe for ONLY full 25 question matches
         df_25 = df[df['total'] == 25].copy()
         
         if not df_25.empty:
@@ -436,3 +449,23 @@ with tab3:
                         st.divider()
     else:
         st.info("No match history found. Get in the arena.")
+
+with tab4:
+    st.subheader("👤 Agent ID Card")
+    st.write("Upload a profile picture to customize your HUD and loadout screen.")
+    
+    uploaded_file = st.file_uploader("Select an Image (PNG/JPG)", type=["png", "jpg", "jpeg"])
+    
+    if uploaded_file is not None:
+        bytes_data = uploaded_file.getvalue()
+        b64_str = base64.b64encode(bytes_data).decode()
+        
+        # Quick preview
+        st.markdown(f'<img src="data:image/png;base64,{b64_str}" style="width: 150px; height: 150px; border-radius: 50%; object-fit: cover; border: 2px solid #8ab4f8;">', unsafe_allow_html=True)
+        
+        if st.button("💾 Save Profile Picture", use_container_width=True):
+            with st.spinner("Encrypting ID Card..."):
+                supabase.table("players").update({"avatar": b64_str}).eq("username", current_user).execute()
+            st.success("Agent ID Updated! Rebooting system...")
+            time.sleep(1)
+            st.rerun()
