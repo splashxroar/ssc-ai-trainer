@@ -136,6 +136,9 @@ if selected_subject == "Math (Quant)":
         "Mensuration", "Data Interpretation"
     ])
 
+# NEW: SELECT NUMBER OF QUESTIONS
+num_questions = st.sidebar.selectbox("Match Length (Targets)", [25, 15, 10])
+
 difficulty = st.sidebar.selectbox("Difficulty Tier", ["Easy", "Moderate", "Hard"])
 test_time_limit = st.sidebar.slider("Match Timer (Minutes)", 10, 60, 30)
 
@@ -155,7 +158,7 @@ if 'current_test' not in st.session_state and 'review_data' not in st.session_st
         st.session_state['answers'] = {i: None for i in range(len(st.session_state['current_test']))}
         st.warning("🔄 Reconnected to active match!")
 
-tab1, tab2, tab3 = st.tabs(["🎮 Ranked Match", "🏅 Leaderboards", "📼 VOD Reviews"])
+tab1, tab2, tab3 = st.tabs(["🎮 Combat Arena", "🏅 Leaderboards & Stats", "📼 VOD Reviews"])
 
 with tab1:
     response = supabase.table("error_log").select("topic").eq("username", current_user).execute()
@@ -171,18 +174,18 @@ with tab1:
         st.write("---")
         col1, col2 = st.columns(2)
         with col1:
-            start_standard = st.button(f"🎯 Queue Standard Match", use_container_width=True)
+            start_standard = st.button(f"🎯 Queue Standard Match ({num_questions} Targets)", use_container_width=True)
         with col2:
-            start_weakest = st.button("🔥 Queue Weakness Drill", disabled=not weakest_topic, use_container_width=True)
+            start_weakest = st.button(f"🔥 Queue Weakness Drill ({num_questions} Targets)", disabled=not weakest_topic, use_container_width=True)
 
         def generate_ai_test(focus_topic):
             actual_topic = focus_topic
             if focus_topic == "Math (Quant)" and specific_chapter and specific_chapter != "Mixed (All Chapters)":
                 actual_topic = f"Math (Quant) - strictly focusing on {specific_chapter}"
                 
-            with st.spinner(f"Generating a {difficulty} match for {actual_topic}..."):
-                # INJECTED RANDOM SEED TO FORCE NEW QUESTIONS EVERY TIME
-                prompt = f"Generate a 25-question multiple-choice test for SSC CGL level. Subject: {actual_topic}. Difficulty Level: {difficulty}. CRITICAL: Questions must be highly unique and completely randomized. Avoid standard generic templates. Seed: {time.time()}. Return ONLY valid JSON format as a list of dictionaries with exactly these keys: 'question', 'options' (list of 4 strings), 'answer' (the exact correct option string), and 'explanation' (a detailed 2-sentence explanation)."
+            with st.spinner(f"Generating a {num_questions}-target {difficulty} match for {actual_topic}..."):
+                # UPDATED PROMPT: Passes exact number of questions
+                prompt = f"Generate a {num_questions}-question multiple-choice test for SSC CGL level. Subject: {actual_topic}. Difficulty Level: {difficulty}. CRITICAL: Questions must be highly unique and completely randomized. Avoid standard generic templates. Seed: {time.time()}. Return ONLY valid JSON format as a list of dictionaries with exactly these keys: 'question', 'options' (list of 4 strings), 'answer' (the exact correct option string), and 'explanation' (a detailed 2-sentence explanation)."
                 try:
                     ai_response = client.models.generate_content(model="gemini-3.5-flash", contents=prompt)
                     raw_text = ai_response.text.replace("```json", "").replace("```", "").strip()
@@ -276,6 +279,7 @@ with tab1:
             st.markdown("### 🗺️ HUD Grid")
             st.write("🔵 Locked | ⚪ Blank")
             
+            # Grid adjusted for custom number of questions
             grid_cols = st.columns(5)
             for i in range(len(test_questions)):
                 col_i = i % 5
@@ -316,7 +320,6 @@ with tab1:
                 
                 total_q = len(test_questions)
                 
-                # INSERT TIME SPENT INTO DATABASE NOW
                 supabase.table("test_history").insert({
                     "username": current_user,
                     "subject": st.session_state['current_focus'],
@@ -355,38 +358,61 @@ with tab1:
             st.rerun()
 
 with tab2:
-    st.subheader("🏆 Segmented Leaderboards")
-    history_response = supabase.table("test_history").select("*").order("score", desc=True).limit(500).execute()
+    # Pulling a large limit so overall Grind Stats stay completely accurate
+    history_response = supabase.table("test_history").select("*").limit(5000).execute()
     
     if history_response.data:
         df = pd.DataFrame(history_response.data)
-        df['Accuracy'] = (df['score'] / df['total'] * 100).round(1).astype(str) + '%'
         
-        # Safely handle time_spent if old rows don't have it
+        # Ensure time_spent is clean
         if 'time_spent' not in df.columns:
             df['time_spent'] = 0.0
-        df['Time (Mins)'] = df['time_spent'].fillna(0).round(2)
+        df['time_spent'] = df['time_spent'].fillna(0)
         
-        lb_tabs = st.tabs(["🧮 Math", "🌍 GK", "🧠 Reasoning", "📖 English", "🔥 Overall"])
+        # --- NEW: GRIND STATS HALL OF FAME ---
+        st.write("### 🎖️ Top Grinders (All Matches & Drill Types)")
+        grind_stats = df.groupby('username').agg(
+            Total_Matches=('score', 'count'), 
+            Total_Time_Mins=('time_spent', 'sum')
+        ).reset_index()
+        grind_stats['Total_Time_Mins'] = grind_stats['Total_Time_Mins'].round(2)
+        # Sort by most matches, then total time
+        grind_stats = grind_stats.sort_values(by=['Total_Matches', 'Total_Time_Mins'], ascending=[False, False])
+        st.dataframe(grind_stats, use_container_width=True, hide_index=True)
         
-        def render_lb(filtered_df):
-            if not filtered_df.empty:
-                # Sort by Highest Score, then Fastest Time
-                leaderboard = filtered_df.sort_values(by=['score', 'Time (Mins)'], ascending=[False, True]).head(20)
-                st.dataframe(leaderboard[['username', 'subject', 'score', 'total', 'Accuracy', 'Time (Mins)']], use_container_width=True, hide_index=True)
-            else:
-                st.info("No records for this category yet. Be the first to claim Rank 1!")
+        st.divider()
 
-        with lb_tabs[0]:
-            render_lb(df[df['subject'].str.contains("Math", na=False)])
-        with lb_tabs[1]:
-            render_lb(df[df['subject'].str.contains("GK", na=False)])
-        with lb_tabs[2]:
-            render_lb(df[df['subject'].str.contains("Reasoning", na=False)])
-        with lb_tabs[3]:
-            render_lb(df[df['subject'].str.contains("English", na=False)])
-        with lb_tabs[4]:
-            render_lb(df)
+        # --- OFFICIAL RANKED LEADERBOARDS (25 Questions ONLY) ---
+        st.write("### 🏆 Official Leaderboards (25-Target Ranked Matches ONLY)")
+        
+        # Filter dataframe for ONLY full 25 question matches
+        df_25 = df[df['total'] == 25].copy()
+        
+        if not df_25.empty:
+            df_25['Accuracy'] = (df_25['score'] / df_25['total'] * 100).round(1).astype(str) + '%'
+            df_25['Time (Mins)'] = df_25['time_spent'].round(2)
+            
+            lb_tabs = st.tabs(["🧮 Math", "🌍 GK", "🧠 Reasoning", "📖 English", "🔥 Overall"])
+            
+            def render_lb(filtered_df):
+                if not filtered_df.empty:
+                    leaderboard = filtered_df.sort_values(by=['score', 'Time (Mins)'], ascending=[False, True]).head(20)
+                    st.dataframe(leaderboard[['username', 'subject', 'score', 'total', 'Accuracy', 'Time (Mins)']], use_container_width=True, hide_index=True)
+                else:
+                    st.info("No records for this category yet. Be the first to claim Rank 1!")
+
+            with lb_tabs[0]:
+                render_lb(df_25[df_25['subject'].str.contains("Math", na=False)])
+            with lb_tabs[1]:
+                render_lb(df_25[df_25['subject'].str.contains("GK", na=False)])
+            with lb_tabs[2]:
+                render_lb(df_25[df_25['subject'].str.contains("Reasoning", na=False)])
+            with lb_tabs[3]:
+                render_lb(df_25[df_25['subject'].str.contains("English", na=False)])
+            with lb_tabs[4]:
+                render_lb(df_25)
+        else:
+            st.warning("No full 25-Target matches have been completed yet. Queue up a full match to hit the boards!")
     else:
         st.info("Leaderboard is empty. Secure the first win.")
 
