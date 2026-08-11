@@ -20,39 +20,26 @@ st.set_page_config(page_title="RADIANT: SSC Arena", layout="wide", initial_sideb
 # --- 🎨 GEMINI UI INJECTION ---
 st.markdown("""
 <style>
-    /* Gemini-style Dark Theme Background */
     .stApp {
         background-color: #131314;
         color: #e3e3e3;
         font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
-    
-    /* Clean Headers */
-    h1, h2, h3 {
-        color: #ffffff !important;
-    }
-
-    /* Hide Streamlit Clutter (FIXED: Kept header visible so sidebar arrow works!) */
+    h1, h2, h3 { color: #ffffff !important; }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {background-color: transparent !important;} 
     
-    /* Sleek Sidebar (Gemini deep grey) */
     [data-testid="stSidebar"] {
         background-color: #1e1f22;
         border-right: 1px solid #444746;
     }
-    
-    /* Safely target Sidebar Text */
-    [data-testid="stSidebar"] h1, 
-    [data-testid="stSidebar"] h2, 
-    [data-testid="stSidebar"] h3, 
-    [data-testid="stSidebar"] label, 
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] h3, [data-testid="stSidebar"] label, 
     [data-testid="stSidebar"] p {
         color: #e3e3e3 !important;
     }
     
-    /* Smooth Gemini-style Buttons */
     .stButton>button {
         border-radius: 24px;
         border: 1px solid #8ab4f8;
@@ -69,8 +56,6 @@ st.markdown("""
         box-shadow: none;
         transform: translateY(-1px);
     }
-    
-    /* Disabled Buttons */
     .stButton>button:disabled {
         border: 1px solid #444746;
         color: #80868b !important;
@@ -78,15 +63,12 @@ st.markdown("""
         transform: none;
     }
     
-    /* Fix Input Boxes */
-    div[data-baseweb="select"] > div, 
-    div[data-baseweb="input"] > div {
+    div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {
         background-color: #282a2d !important;
         border: 1px solid #444746 !important;
         border-radius: 8px !important;
     }
     
-    /* Tabs Styling */
     .stTabs [data-baseweb="tab-list"] {
         gap: 24px;
         background-color: transparent;
@@ -98,9 +80,7 @@ st.markdown("""
         font-weight: 500;
         padding-bottom: 12px;
     }
-    .stTabs [data-baseweb="tab"]:hover {
-        color: #e3e3e3 !important;
-    }
+    .stTabs [data-baseweb="tab"]:hover { color: #e3e3e3 !important; }
     .stTabs [aria-selected="true"] {
         border-bottom: 3px solid #8ab4f8;
         color: #8ab4f8 !important; 
@@ -148,21 +128,12 @@ st.sidebar.header("⚙️ Match Settings")
 
 selected_subject = st.sidebar.selectbox("Queue Select", ["GK (Polity, History, etc.)", "Math (Quant)", "English Comprehension", "General Intelligence (Reasoning)"])
 
-# --- NEW: MATH CHAPTER LOGIC ---
 specific_chapter = None
 if selected_subject == "Math (Quant)":
     specific_chapter = st.sidebar.selectbox("Target Chapter (Math Only)", [
-        "Mixed (All Chapters)", 
-        "Number System",
-        "Percentage", 
-        "Ratio & Proportion",
-        "Time & Work",
-        "Time, Speed & Distance",
-        "Algebra",
-        "Geometry",
-        "Trigonometry",
-        "Mensuration",
-        "Data Interpretation"
+        "Mixed (All Chapters)", "Number System", "Percentage", "Ratio & Proportion",
+        "Time & Work", "Time, Speed & Distance", "Algebra", "Geometry", "Trigonometry",
+        "Mensuration", "Data Interpretation"
     ])
 
 difficulty = st.sidebar.selectbox("Difficulty Tier", ["Easy", "Moderate", "Hard"])
@@ -170,7 +141,7 @@ test_time_limit = st.sidebar.slider("Match Timer (Minutes)", 10, 60, 30)
 
 st.title(f"⚡ RADIANT: SSC Combat Arena")
 
-# --- AUTO-SAVE RECOVERY SYSTEM ---
+# --- AUTO-SAVE RECOVERY ---
 if 'current_test' not in st.session_state and 'review_data' not in st.session_state:
     recovery = supabase.table("active_sessions").select("*").eq("username", current_user).execute()
     if recovery.data:
@@ -184,7 +155,7 @@ if 'current_test' not in st.session_state and 'review_data' not in st.session_st
         st.session_state['answers'] = {i: None for i in range(len(st.session_state['current_test']))}
         st.warning("🔄 Reconnected to active match!")
 
-tab1, tab2, tab3 = st.tabs(["🎮 Ranked Match", "🏅 Global Top 500", "📼 VOD Reviews"])
+tab1, tab2, tab3 = st.tabs(["🎮 Ranked Match", "🏅 Leaderboards", "📼 VOD Reviews"])
 
 with tab1:
     response = supabase.table("error_log").select("topic").eq("username", current_user).execute()
@@ -205,13 +176,13 @@ with tab1:
             start_weakest = st.button("🔥 Queue Weakness Drill", disabled=not weakest_topic, use_container_width=True)
 
         def generate_ai_test(focus_topic):
-            # Check if Math chapter is selected
             actual_topic = focus_topic
             if focus_topic == "Math (Quant)" and specific_chapter and specific_chapter != "Mixed (All Chapters)":
                 actual_topic = f"Math (Quant) - strictly focusing on {specific_chapter}"
                 
             with st.spinner(f"Generating a {difficulty} match for {actual_topic}..."):
-                prompt = f"Generate a 25-question multiple-choice test for SSC CGL level. Subject: {actual_topic}. Difficulty Level: {difficulty}. Return ONLY valid JSON format as a list of dictionaries with exactly these keys: 'question', 'options' (list of 4 strings), 'answer' (the exact correct option string), and 'explanation' (a detailed 2-sentence explanation)."
+                # INJECTED RANDOM SEED TO FORCE NEW QUESTIONS EVERY TIME
+                prompt = f"Generate a 25-question multiple-choice test for SSC CGL level. Subject: {actual_topic}. Difficulty Level: {difficulty}. CRITICAL: Questions must be highly unique and completely randomized. Avoid standard generic templates. Seed: {time.time()}. Return ONLY valid JSON format as a list of dictionaries with exactly these keys: 'question', 'options' (list of 4 strings), 'answer' (the exact correct option string), and 'explanation' (a detailed 2-sentence explanation)."
                 try:
                     ai_response = client.models.generate_content(model="gemini-3.5-flash", contents=prompt)
                     raw_text = ai_response.text.replace("```json", "").replace("```", "").strip()
@@ -345,11 +316,13 @@ with tab1:
                 
                 total_q = len(test_questions)
                 
+                # INSERT TIME SPENT INTO DATABASE NOW
                 supabase.table("test_history").insert({
                     "username": current_user,
                     "subject": st.session_state['current_focus'],
                     "score": score,
                     "total": total_q,
+                    "time_spent": time_spent,
                     "review_data": review_data
                 }).execute()
                 
@@ -382,16 +355,38 @@ with tab1:
             st.rerun()
 
 with tab2:
-    st.subheader("🏆 Radiant Rankings")
-    history_response = supabase.table("test_history").select("*").order("created_at", desc=True).limit(50).execute()
+    st.subheader("🏆 Segmented Leaderboards")
+    history_response = supabase.table("test_history").select("*").order("score", desc=True).limit(500).execute()
     
     if history_response.data:
         df = pd.DataFrame(history_response.data)
         df['Accuracy'] = (df['score'] / df['total'] * 100).round(1).astype(str) + '%'
         
-        st.write("### 🥇 Top Agents")
-        leaderboard = df.sort_values(by='score', ascending=False).head(10)
-        st.dataframe(leaderboard[['username', 'subject', 'score', 'total', 'Accuracy']], use_container_width=True, hide_index=True)
+        # Safely handle time_spent if old rows don't have it
+        if 'time_spent' not in df.columns:
+            df['time_spent'] = 0.0
+        df['Time (Mins)'] = df['time_spent'].fillna(0).round(2)
+        
+        lb_tabs = st.tabs(["🧮 Math", "🌍 GK", "🧠 Reasoning", "📖 English", "🔥 Overall"])
+        
+        def render_lb(filtered_df):
+            if not filtered_df.empty:
+                # Sort by Highest Score, then Fastest Time
+                leaderboard = filtered_df.sort_values(by=['score', 'Time (Mins)'], ascending=[False, True]).head(20)
+                st.dataframe(leaderboard[['username', 'subject', 'score', 'total', 'Accuracy', 'Time (Mins)']], use_container_width=True, hide_index=True)
+            else:
+                st.info("No records for this category yet. Be the first to claim Rank 1!")
+
+        with lb_tabs[0]:
+            render_lb(df[df['subject'].str.contains("Math", na=False)])
+        with lb_tabs[1]:
+            render_lb(df[df['subject'].str.contains("GK", na=False)])
+        with lb_tabs[2]:
+            render_lb(df[df['subject'].str.contains("Reasoning", na=False)])
+        with lb_tabs[3]:
+            render_lb(df[df['subject'].str.contains("English", na=False)])
+        with lb_tabs[4]:
+            render_lb(df)
     else:
         st.info("Leaderboard is empty. Secure the first win.")
 
@@ -403,8 +398,10 @@ with tab3:
         for test in past_tests.data:
             date_str = str(test['created_at'])[:10]
             score_ratio = f"{test['score']}/{test['total']}"
+            time_logged = test.get('time_spent', 0)
+            time_display = f" | {round(time_logged, 2)} mins" if time_logged else ""
             
-            with st.expander(f"📅 {date_str} | {test['subject']} | Score: {score_ratio}"):
+            with st.expander(f"📅 {date_str} | {test['subject']} | Score: {score_ratio}{time_display}"):
                 if test.get('review_data'):
                     for i, q_data in enumerate(test['review_data']):
                         st.markdown(f"**Target {i+1}: {q_data['question']}** ({q_data['status']})")
